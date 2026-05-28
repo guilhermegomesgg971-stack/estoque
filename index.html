@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscador de Estoque</title>
+    <title>Buscador de Estoque O Boticário</title>
     <style>
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { margin: 0; padding: 0; background-color: #f1f3f5; color: #212529; }
@@ -39,6 +39,7 @@
 </div>
 
 <script>
+    // ID da sua planilha já embutido e testado
     const SPREADSHEET_ID = '1Tz-ECCCJgoJwkKA3QriO1_KSLLf_pPaHHiqQGYwhwcI'; 
 
     let produtos = [];
@@ -59,43 +60,38 @@
     async function atualizarPlanilha() {
         const btn = document.querySelector('.sync-btn');
         btn.innerText = "⏳...";
-        document.getElementById('resultsCount').innerText = "Buscando dados...";
+        document.getElementById('resultsCount').innerText = "Buscando dados da nuvem...";
         
-        const url = `https://google.com{SPREADSHEET_ID}/export?format=csv`;
+        // LINK COM API DO GOOGLE VISUALIZATION: Abre o acesso público sem restrição de CORS
+        const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=out:json`;
         
         try {
             const resposta = await fetch(url);
-            if (!resposta.ok) throw new Error('Erro');
-            
             const texto = await resposta.text();
             
-            // Quebra as linhas de forma simples e direta
-            const linhas = texto.split(/\r?\n/);
+            // Limpa o formato de segurança do Google e transforma em JSON puro
+            const jsonPuro = JSON.parse(texto.substring(47).slice(0, -2));
+            const linhas = jsonPuro.table.rows;
             
-            produtos = [];
-            
-            for (let i = 1; i < linhas.length; i++) {
-                if (!linhas[i].trim()) continue;
+            produtos = linhas.map(linha => {
+                const celulas = linha.c || [];
                 
-                // Divide as colunas por vírgula
-                const col = linhas[i].split(',');
-                
-                // Se a linha tiver os dados básicos, processa
-                if (col.length >= 2) {
-                    const vSku = col[0] ? col[0].replace(/"/g, '').trim() : '';
-                    const vNome = col[1] ? col[1].replace(/"/g, '').trim() : '';
-                    const vRua = col[2] ? col[2].replace(/"/g, '').trim() : '-';
-                    const vRack = col[3] ? col[3].replace(/"/g, '').trim() : '-';
-                    const vLinha = col[4] ? col[4].replace(/"/g, '').trim() : '-';
-                    const vColuna = col[5] ? col[5].replace(/"/g, '').trim() : '-';
+                // Mapeia as 6 colunas na ordem exata da sua tabela
+                const vSku = celulas[0] && celulas[0].v !== null ? String(celulas[0].v) : '';
+                const vNome = celulas[1] && celulas[1].v !== null ? String(celulas[1].v) : '';
+                const vRua = celulas[2] && celulas[2].v !== null ? String(celulas[2].v) : '-';
+                const vRack = celulas[3] && celulas[3].v !== null ? String(celulas[3].v) : '-';
+                const vLinha = celulas[4] && celulas[4].v !== null ? String(celulas[4].v) : '-';
+                const vColuna = celulas[5] && celulas[5].v !== null ? String(celulas[5].v) : '-';
 
-                    const vEndereco = `${vRua} | ${vRack} | Linha: ${vLinha} | Coluna: ${vColuna}`;
+                const vEndereco = `${vRua} | ${vRack} | Linha: ${vLinha} | Coluna: ${vColuna}`;
 
-                    if (vNome && vSku.toLowerCase() !== 'sku') {
-                        produtos.push({ sku: vSku, nome: vNome, endereco: vEndereco });
-                    }
-                }
-            }
+                return {
+                    sku: vSku,
+                    nome: vNome,
+                    endereco: vEndereco
+                };
+            }).filter(p => p.nome !== '' && p.sku.toLowerCase() !== 'sku'); // Remove cabeçalhos e linhas vazias
 
             localStorage.setItem('produtos_estoque', JSON.stringify(produtos));
             
@@ -105,7 +101,7 @@
 
             renderizarProdutos(produtos);
         } catch (erro) {
-            alert("Erro ao sincronizar. Verifique a internet.");
+            alert("Erro de comunicação com o Google Sheets.\n\nCertifique-se de que a planilha está salva com acesso público para 'Qualquer pessoa com o link'.");
             document.getElementById('resultsCount').innerText = "Erro na sincronização.";
             console.error(erro);
         } finally {
