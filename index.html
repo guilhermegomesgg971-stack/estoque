@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscador de Estoque Ultra Rápido</title>
+    <title>Buscador de Estoque - Localizador</title>
     <style>
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { margin: 0; padding: 0; background-color: #f1f3f5; color: #212529; }
@@ -30,7 +30,7 @@
 </header>
 
 <div class="container">
-    <input type="text" id="searchInput" class="search-input" placeholder="Digite o produto, código ou endereço..." oninput="filtrarProdutos()">
+    <input type="text" id="searchInput" class="search-input" placeholder="Digite o produto, SKU ou endereço..." oninput="filtrarProdutos()">
     <div class="results-count">
         <span id="resultsCount">Carregando estoque offline...</span>
         <span id="dataStatus" class="status-local"></span>
@@ -41,7 +41,6 @@
 <script>
     // Cole aqui o ID da sua planilha (sem espaços dentro das aspas, com ponto e vírgula no final)
     const SPREADSHEET_ID = '1Tz-ECCCJgoJwkKA3QriO1_KSLLf_pPaHHiqQGYwhwcI/edit?hl=pt-br&gid=0#gid=0'; 
-    const SHEET_NAME = 'Página1'; 
 
     let produtos = [];
 
@@ -61,12 +60,9 @@
     async function atualizarPlanilha() {
         const btn = document.querySelector('.sync-btn');
         btn.innerText = "⏳...";
-        document.getElementById('resultsCount').innerText = "Buscando dados novos do Google...";
+        document.getElementById('resultsCount').innerText = "Buscando dados...";
         
-        // Nova URL de API simplificada que evita falhas de leitura
-        const url = `const url = `const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=out:json`;
-`;
-`;
+        const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=out:json`;
         
         try {
             const resposta = await fetch(url);
@@ -76,23 +72,33 @@
             const jsonPuro = JSON.parse(texto.substring(47).slice(0, -2));
             const linhas = jsonPuro.table.rows;
             
-            // Processamento ultra seguro das colunas (independente de como o Google estruturar o objeto)
+            // Mapeamento exato baseado nas suas 5 colunas sequenciais
             produtos = linhas.map(linha => {
                 const celulas = linha.c || [];
+                
+                // Captura os dados limpando valores nulos
+                const vSku = celulas[0] && celulas[0].v !== null ? String(celulas[0].v) : '';
+                const vNome = celulas[1] && celulas[1].v !== null ? String(celulas[1].v) : '';
+                const vRack = celulas[2] && celulas[2].v !== null ? String(celulas[2].v) : '-';
+                const vLinha = celulas[3] && celulas[3].v !== null ? String(celulas[3].v) : '-';
+                const vColuna = celulas[4] && celulas[4].v !== null ? String(celulas[4].v) : '-';
+
+                // Junta rack, linha e coluna em uma única informação visual organizada
+                const vEndereco = `Rack: ${vRack} | Linha: ${vLinha} | Coluna: ${vColuna}`;
+
                 return {
-                    sku: celulas[0] && celulas[0].v !== null ? String(celulas[0].v) : '',
-                    nome: celulas[1] && celulas[1].v !== null ? String(celulas[1].v) : '',
-                    endereco: celulas[2] && celulas[2].v !== null ? String(celulas[2].v) : ''
+                    sku: vSku,
+                    nome: vNome,
+                    endereco: vEndereco
                 };
             });
 
-            // Se capturar os cabeçalhos literais na primeira linha, remove da lista
-            if (produtos.length > 0 && produtos[0].sku.toLowerCase() === 'sku') {
-                produtos.shift();
-            }
-
-            // Filtra linhas totalmente vazias cadastradas por engano na planilha
-            produtos = produtos.filter(p => p.nome.trim() !== '' || p.sku.trim() !== '');
+            // Filtra e remove a linha de cabeçalhos caso ela venha misturada
+            produtos = produtos.filter(p => {
+                const skuLimpo = p.sku.toLowerCase().trim();
+                const nomeLimpo = p.nome.toLowerCase().trim();
+                return skuLimpo !== 'sku' && nomeLimpo !== 'nome' && nomeLimpo !== '';
+            });
 
             localStorage.setItem('produtos_estoque', JSON.stringify(produtos));
             
@@ -102,7 +108,7 @@
 
             renderizarProdutos(produtos);
         } catch (erro) {
-            alert("Erro ao conectar com o Google Sheets.\n\nVerifique:\n1. Se o ID da planilha está certo no código.\n2. Se a planilha está como 'Qualquer pessoa com o link'.\n3. Se você clicou em 'Publicar na Web'.");
+            alert("Erro ao decodificar a planilha. Verifique as configurações de compartilhamento.");
             document.getElementById('resultsCount').innerText = "Erro na sincronização.";
             console.error(erro);
         } finally {
@@ -125,7 +131,7 @@
             card.className = 'product-card';
             card.innerHTML = `
                 <div class="product-title">${p.nome}</div>
-                <div class="product-sku">Cód/SKU: ${p.sku}</div>
+                <div class="product-sku">SKU: ${p.sku}</div>
                 <div class="address-badge">📍 ${p.endereco}</div>
             `;
             container.appendChild(card);
