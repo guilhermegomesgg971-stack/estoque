@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscador de Estoque - Localizador</title>
+    <title>Buscador de Estoque - Final</title>
     <style>
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { margin: 0; padding: 0; background-color: #f1f3f5; color: #212529; }
@@ -57,7 +57,7 @@
         }
     }
 
-    // Função auxiliar para quebrar as linhas do CSV respeitando aspas
+    // Processador robusto de texto CSV
     function parseCSV(text) {
         let lines = [];
         let row = [""];
@@ -89,21 +89,19 @@
         btn.innerText = "⏳...";
         document.getElementById('resultsCount').innerText = "Buscando dados...";
         
-        // Chamada via formato CSV que evita falhas de leitura
-        const url = `https://google.com{SPREADSHEET_ID}/pub?output=csv`;
+        // NOVO LINK INFALÍVEL: Puxa o CSV direto da URL de exportação nativa do Google Drive
+        const url = `https://google.com{SPREADSHEET_ID}/export?format=csv`;
         
         try {
             const resposta = await fetch(url);
-            if (!resposta.ok) throw new Error('Falha de rede');
+            if (!resposta.ok) throw new Error('Bloqueio do Google');
             
             const texto = await resposta.text();
             const linhas = parseCSV(texto);
             
-            if (linhas.length <= 1) {
-                throw new Error('Planilha vazia');
-            }
+            if (linhas.length <= 1) throw new Error('Vazia');
 
-            // Mapeia os dados assumindo a ordem das suas 6 colunas (sku, nome, rua, rack, linha, coluna)
+            // Mapeia as 6 colunas (sku, nome, rua, rack, linha, coluna)
             produtos = linhas.slice(1).map(col => {
                 const vSku = col[0] ? col[0].trim() : '';
                 const vNome = col[1] ? col[1].trim() : '';
@@ -112,7 +110,6 @@
                 const vLinha = col[4] ? col[4].trim() : '-';
                 const vColuna = col[5] ? col[5].trim() : '-';
 
-                // Formatação unificada do endereço com a Rua inclusa
                 const vEndereco = `Rua: ${vRua} | Rack: ${vRack} | Linha: ${vLinha} | Coluna: ${vColuna}`;
 
                 return {
@@ -120,7 +117,7 @@
                     nome: vNome,
                     endereco: vEndereco
                 };
-            }).filter(p => p.nome !== ''); // Ignora linhas em branco
+            }).filter(p => p.nome !== '');
 
             localStorage.setItem('produtos_estoque', JSON.stringify(produtos));
             
@@ -130,7 +127,7 @@
 
             renderizarProdutos(produtos);
         } catch (erro) {
-            alert("Erro ao ler a planilha. Certifique-se de que a publicou como CSV na web e que o ID está correto.");
+            alert("Erro de conexão.\n\nPor favor, garanta que no botão azul 'Compartilhar' da sua planilha você mudou para 'Qualquer pessoa com o link'.");
             document.getElementById('resultsCount').innerText = "Erro na sincronização.";
             console.error(erro);
         } finally {
