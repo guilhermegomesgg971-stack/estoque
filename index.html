@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscador de Estoque - Final</title>
+    <title>Buscador de Estoque - O Boticário / QDB</title>
     <style>
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { margin: 0; padding: 0; background-color: #f1f3f5; color: #212529; }
@@ -16,7 +16,7 @@
         .product-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 5px solid #0f9d58; display: flex; flex-direction: column; gap: 6px; }
         .product-title { font-size: 1.1rem; font-weight: bold; color: #1a1a1a; }
         .product-sku { font-size: 0.85rem; color: #6c757d; font-family: monospace; }
-        .address-badge { background-color: #e6f4ea; border: 1px solid #ceead6; color: #0f9d58; padding: 8px; border-radius: 4px; font-size: 0.95rem; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; margin-top: 5px; }
+        .address-badge { background-color: #e6f4ea; border: 1px solid #ceead6; color: #0f9d58; padding: 8px; border-radius: 4px; font-size: 0.95rem; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; margin-top: 5px; window-break: break-all; }
         .sync-btn { background: #fff; color: #0f9d58; border: none; padding: 6px 12px; font-size: 0.85rem; border-radius: 4px; cursor: pointer; font-weight: bold; }
         .sync-btn:active { background: #e6f4ea; }
         .status-local { font-size: 0.8rem; color: #888; }
@@ -39,7 +39,7 @@
 </div>
 
 <script>
-    // Cole aqui o ID da sua planilha (sem espaços dentro das aspas, com ponto e vírgula no final)
+    // ID extraído perfeitamente do seu link
     const SPREADSHEET_ID = '1Tz-ECCCJgoJwkKA3QriO1_KSLLf_pPaHHiqQGYwhwcI'; 
 
     let produtos = [];
@@ -57,67 +57,50 @@
         }
     }
 
-    // Processador robusto de texto CSV
-    function parseCSV(text) {
-        let lines = [];
-        let row = [""];
-        let inQuotes = false;
-
-        for (let i = 0; i < text.length; i++) {
-            let c = text[i];
-            let next = text[i+1];
-
-            if (c === '"') {
-                if (inQuotes && next === '"') { row[row.length - 1] += '"'; i++; }
-                else { inQuotes = !inQuotes; }
-            } else if (c === ',' && !inQuotes) {
-                row.push("");
-            } else if ((c === '\r' || c === '\n') && !inQuotes) {
-                if (c === '\r' && next === '\n') { i++; }
-                lines.push(row);
-                row = [""];
-            } else {
-                row[row.length - 1] += c;
-            }
-        }
-        if (row.length > 1 || row !== "") { lines.push(row); }
-        return lines;
-    }
-
     async function atualizarPlanilha() {
         const btn = document.querySelector('.sync-btn');
         btn.innerText = "⏳...";
-        document.getElementById('resultsCount').innerText = "Buscando dados...";
+        document.getElementById('resultsCount').innerText = "Buscando dados da nuvem...";
         
-        // NOVO LINK INFALÍVEL: Puxa o CSV direto da URL de exportação nativa do Google Drive
-        const url = `https://google.com{SPREADSHEET_ID}/export?format=csv`;
+        // Formato de API em JSON puro (Suporta vírgulas nos nomes dos produtos)
+        const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=out:json`;
         
         try {
             const resposta = await fetch(url);
-            if (!resposta.ok) throw new Error('Bloqueio do Google');
+            if (!resposta.ok) throw new Error('Bloqueio de rede');
             
             const texto = await resposta.text();
-            const linhas = parseCSV(texto);
+            // Tratamento do formato padrão do Google
+            const jsonPuro = JSON.parse(texto.substring(47).slice(0, -2));
+            const linhas = jsonPuro.table.rows;
             
-            if (linhas.length <= 1) throw new Error('Vazia');
+            produtos = linhas.map(linha => {
+                const celulas = linha.c || [];
+                
+                // Mapeia e higieniza coluna por coluna com base na estrutura real da sua tabela
+                const vSku = celulas[0] && celulas[0].v !== null ? String(celulas[0].v) : '';
+                const vNome = celulas[1] && celulas[1].v !== null ? String(celulas[1].v) : '';
+                const vRua = celulas[2] && celulas[2].v !== null ? String(celulas[2].v) : '-';
+                const vRack = celulas[3] && celulas[3].v !== null ? String(celulas[3].v) : '-';
+                const vLinha = celulas[4] && celulas[4].v !== null ? String(celulas[4].v) : '-';
+                const vColuna = celulas[5] && celulas[5].v !== null ? String(celulas[5].v) : '-';
 
-            // Mapeia as 6 colunas (sku, nome, rua, rack, linha, coluna)
-            produtos = linhas.slice(1).map(col => {
-                const vSku = col[0] ? col[0].trim() : '';
-                const vNome = col[1] ? col[1].trim() : '';
-                const vRua = col[2] ? col[2].trim() : '-';
-                const vRack = col[3] ? col[3].trim() : '-';
-                const vLinha = col[4] ? col[4].trim() : '-';
-                const vColuna = col[5] ? col[5].trim() : '-';
-
-                const vEndereco = `Rua: ${vRua} | Rack: ${vRack} | Linha: ${vLinha} | Coluna: ${vColuna}`;
+                // Junta todas as coordenadas em um formato visual limpo
+                const vEndereco = `${vRua} | ${vRack} | Linha: ${vLinha} | Coluna: ${vColuna}`;
 
                 return {
                     sku: vSku,
                     nome: vNome,
                     endereco: vEndereco
                 };
-            }).filter(p => p.nome !== '');
+            });
+
+            // Remove os cabeçalhos se eles vierem misturados na primeira linha
+            produtos = produtos.filter(p => {
+                const skuLimpo = p.sku.toLowerCase().trim();
+                const nomeLimpo = p.nome.toLowerCase().trim();
+                return skuLimpo !== 'sku' && nomeLimpo !== 'nome' && nomeLimpo !== '';
+            });
 
             localStorage.setItem('produtos_estoque', JSON.stringify(produtos));
             
@@ -127,7 +110,7 @@
 
             renderizarProdutos(produtos);
         } catch (erro) {
-            alert("Erro de conexão.\n\nPor favor, garanta que no botão azul 'Compartilhar' da sua planilha você mudou para 'Qualquer pessoa com o link'.");
+            alert("Erro ao ler dados da planilha.\n\nVerifique se o compartilhamento está configurado como 'Qualquer pessoa com o link'.");
             document.getElementById('resultsCount').innerText = "Erro na sincronização.";
             console.error(erro);
         } finally {
@@ -150,7 +133,7 @@
             card.className = 'product-card';
             card.innerHTML = `
                 <div class="product-title">${p.nome}</div>
-                <div class="product-sku">SKU: ${p.sku}</div>
+                <div class="product-sku">Código/SKU: ${p.sku}</div>
                 <div class="address-badge">📍 ${p.endereco}</div>
             `;
             container.appendChild(card);
