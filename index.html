@@ -1,80 +1,108 @@
-<!DOCTYPE html>		
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscador de Estoque</title>
+    <title>Buscador de Estoque Ultra Rápido</title>
     <style>
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { margin: 0; padding: 0; background-color: #f1f3f5; color: #212529; }
-        header { background-color: #0f9d58; color: white; padding: 15px; text-align: center; font-size: 1.2rem; font-weight: bold; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        header { background-color: #0f9d58; color: white; padding: 15px; text-align: center; font-size: 1.2rem; font-weight: bold; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
         .container { padding: 15px; max-width: 600px; margin: 0 auto; }
         .search-input { width: 100%; padding: 15px; font-size: 1rem; border: 2px solid #ced4da; border-radius: 8px; outline: none; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .search-input:focus { border-color: #0f9d58; }
-        .results-count { font-size: 0.9rem; color: #6c757d; margin: 10px 0; padding-left: 5px; }
+        .results-count { font-size: 0.9rem; color: #6c757d; margin: 10px 0; padding-left: 5px; display: flex; justify-content: space-between; }
         .product-list { display: flex; flex-direction: column; gap: 12px; }
         .product-card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 5px solid #0f9d58; display: flex; flex-direction: column; gap: 6px; }
         .product-title { font-size: 1.1rem; font-weight: bold; color: #1a1a1a; }
         .product-sku { font-size: 0.85rem; color: #6c757d; font-family: monospace; }
         .address-badge { background-color: #e6f4ea; border: 1px solid #ceead6; color: #0f9d58; padding: 8px; border-radius: 4px; font-size: 0.95rem; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; margin-top: 5px; }
-        .loader { text-align: center; padding: 40px; font-size: 1.1rem; color: #0f9d58; font-weight: bold; }
+        .sync-btn { background: #fff; color: #0f9d58; border: none; padding: 6px 12px; font-size: 0.85rem; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .sync-btn:active { background: #e6f4ea; }
+        .status-local { font-size: 0.8rem; color: #888; }
     </style>
 </head>
 <body>
 
-<header>📊 Localizador de Estoque</header>
+<header>
+    <span>📊 Busca de Estoque</span>
+    <button class="sync-btn" onclick="atualizarPlanilha()">🔄 Atualizar</button>
+</header>
 
 <div class="container">
-    <input type="text" id="searchInput" class="search-input" placeholder="Conectando à planilha..." oninput="filtrarProdutos()" disabled>
-    <div class="results-count" id="resultsCount">Carregando dados...</div>
-    <div class="product-list" id="productList">
-        <div class="loader" id="loader">Buscando dados do Google Sheets...</div>
+    <input type="text" id="searchInput" class="search-input" placeholder="Digite o produto, código ou endereço..." oninput="filtrarProdutos()">
+    <div class="results-count">
+        <span id="resultsCount">Carregando estoque offline...</span>
+        <span id="dataStatus" class="status-local"></span>
     </div>
+    <div class="product-list" id="productList"></div>
 </div>
 
 <script>
     // Configurações da sua planilha
-    const SPREADSHEET_ID = 1Tz-ECCCJgoJwkKA3QriO1_KSLLf_pPaHHiqQGYwhwcI/edit?hl=pt-br&gid=0#gid=0
+    const SPREADSHEET_ID = 1Tz-ECCCJgoJwkKA3QriO1_KSLLf_pPaHHiqQGYwhwcI/edit?hl=pt-br&gid=0#gid=0 
     const SHEET_NAME = 'Página1'; 
 
     let produtos = [];
 
-    async function carregarDadosPlanilha() {
+    // Carrega os dados salvos na memória do celular imediatamente
+    function carregarDadosLocais() {
+        const dadosSalvos = localStorage.getItem('produtos_estoque');
+        const ultimaAtualizacao = localStorage.getItem('ultima_atualizacao');
+        
+        if (dadosSalvos) {
+            produtos = JSON.parse(dadosSalvos);
+            document.getElementById('dataStatus').innerText = "Dados locais: " + ultimaAtualizacao;
+            renderizarProdutos(produtos);
+        } else {
+            // Se for a primeira vez e não tiver nada salvo, busca da internet
+            atualizarPlanilha();
+        }
+    }
+
+    // Busca os dados novos do Google e salva na memória
+    async function atualizarPlanilha() {
+        const btn = document.querySelector('.sync-btn');
+        btn.innerText = "⏳...";
+        document.getElementById('resultsCount').innerText = "Buscando dados novos do Google...";
+        
         const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`;
+        
         try {
             const resposta = await fetch(url);
             const texto = await resposta.text();
             const jsonPuro = JSON.parse(texto.substring(47).slice(0, -2));
             const linhas = jsonPuro.table.rows;
             
-            // Carrega pulando a primeira linha (cabeçalho) se ela contiver os títulos
-            produtos = linhas.map(linha => {
-                return {
-                    sku: linha.c[0] ? String(linha.c[0].v) : '',
-                    nome: linha.c[1] ? String(linha.c[1].v) : '',
-                    endereco: linha.c[2] ? String(linha.c[2].v) : ''
-                };
-            });
+            produtos = linhas.map(linha => ({
+                sku: linha.c[0] ? String(linha.c[0].v) : '',
+                nome: linha.c[1] ? String(linha.c[1].v) : '',
+                endereco: linha.c[2] ? String(linha.c[2].v) : ''
+            }));
 
-            // Se a primeira linha capturada for o cabeçalho "sku", remove ela da listagem
             if(produtos.length > 0 && produtos[0].sku.toLowerCase() === 'sku') {
                 produtos.shift();
             }
 
-            document.getElementById('loader').style.display = 'none';
-            document.getElementById('searchInput').disabled = false;
-            document.getElementById('searchInput').placeholder = "Digite o produto, código ou endereço...";
+            // Salva na memória do navegador do celular
+            localStorage.setItem('produtos_estoque', JSON.stringify(produtos));
+            
+            const agora = new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
+            localStorage.setItem('ultima_atualizacao', agora);
+            document.getElementById('dataStatus').innerText = "Atualizado às: " + agora;
+
             renderizarProdutos(produtos);
         } catch (erro) {
-            document.getElementById('resultsCount').innerText = "Erro na conexão.";
-            document.getElementById('loader').innerText = "Verifique as configurações de compartilhamento da planilha.";
+            alert("Erro ao sincronizar com o Google Sheets. Verifique a internet.");
             console.error(erro);
+        } finally {
+            btn.innerText = "🔄 Atualizar";
         }
     }
 
     function renderizarProdutos(lista) {
         const container = document.getElementById('productList');
-        document.getElementById('resultsCount').innerText = `${lista.length} produto(s) encontrado(s)`;
+        document.getElementById('resultsCount').innerText = `${lista.length} produto(s) no estoque`;
         container.innerHTML = '';
         
         if (lista.length === 0) {
@@ -106,7 +134,8 @@
         renderizarProdutos(filtrados);
     }
 
-    window.onload = carregarDadosPlanilha;
+    // Inicia lendo a memória do celular (instantâneo)
+    window.onload = carregarDadosLocais;
 </script>
 </body>
 </html>
