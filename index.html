@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Localizador de Estoque</title>
+    <title>Buscador de Estoque</title>
     <style>
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { margin: 0; padding: 0; background-color: #f1f3f5; color: #212529; }
@@ -32,14 +32,13 @@
 <div class="container">
     <input type="text" id="searchInput" class="search-input" placeholder="Digite o produto, SKU ou endereço..." oninput="filtrarProdutos()">
     <div class="results-count">
-        <span id="resultsCount">Carregando estoque offline...</span>
+        <span id="resultsCount">Carregando estoque...</span>
         <span id="dataStatus" class="status-local"></span>
     </div>
     <div class="product-list" id="productList"></div>
 </div>
 
 <script>
-    // Seu ID correto configurado sem espaços
     const SPREADSHEET_ID = '1Tz-ECCCJgoJwkKA3QriO1_KSLLf_pPaHHiqQGYwhwcI'; 
 
     let produtos = [];
@@ -57,32 +56,6 @@
         }
     }
 
-    function parseCSV(text) {
-        let lines = [];
-        let row = [""];
-        let inQuotes = false;
-
-        for (let i = 0; i < text.length; i++) {
-            let c = text[i];
-            let next = text[i+1];
-
-            if (c === '"') {
-                if (inQuotes && next === '"') { row[row.length - 1] += '"'; i++; }
-                else { inQuotes = !inQuotes; }
-            } else if (c === ',' && !inQuotes) {
-                row.push("");
-            } else if ((c === '\r' || c === '\n') && !inQuotes) {
-                if (c === '\r' && next === '\n') { i++; }
-                lines.push(row);
-                row = [""];
-            } else {
-                row[row.length - 1] += c;
-            }
-        }
-        if (row.length > 1 || row !== "") { lines.push(row); }
-        return lines;
-    }
-
     async function atualizarPlanilha() {
         const btn = document.querySelector('.sync-btn');
         btn.innerText = "⏳...";
@@ -92,31 +65,37 @@
         
         try {
             const resposta = await fetch(url);
-            if (!resposta.ok) throw new Error('Bloqueio do Google');
+            if (!resposta.ok) throw new Error('Erro');
             
             const texto = await resposta.text();
-            const linhas = parseCSV(texto);
             
-            if (linhas.length <= 1) throw new Error('Vazia');
+            // Quebra as linhas de forma simples e direta
+            const linhas = texto.split(/\r?\n/);
+            
+            produtos = [];
+            
+            for (let i = 1; i < linhas.length; i++) {
+                if (!linhas[i].trim()) continue;
+                
+                // Divide as colunas por vírgula
+                const col = linhas[i].split(',');
+                
+                // Se a linha tiver os dados básicos, processa
+                if (col.length >= 2) {
+                    const vSku = col[0] ? col[0].replace(/"/g, '').trim() : '';
+                    const vNome = col[1] ? col[1].replace(/"/g, '').trim() : '';
+                    const vRua = col[2] ? col[2].replace(/"/g, '').trim() : '-';
+                    const vRack = col[3] ? col[3].replace(/"/g, '').trim() : '-';
+                    const vLinha = col[4] ? col[4].replace(/"/g, '').trim() : '-';
+                    const vColuna = col[5] ? col[5].replace(/"/g, '').trim() : '-';
 
-            // Mapeamento sequencial baseado estritamente na sua estrutura real de 6 colunas
-            produtos = linhas.slice(1).map(col => {
-                const vSku = col[0] ? col[0].trim() : '';
-                const vNome = col[1] ? col[1].trim() : '';
-                const vRua = col[2] ? col[2].trim() : '-';
-                const vRack = col[3] ? col[3].trim() : '-';
-                const vLinha = col[4] ? col[4].trim() : '-';
-                const vColuna = col[5] ? col[5].trim() : '-';
+                    const vEndereco = `${vRua} | ${vRack} | Linha: ${vLinha} | Coluna: ${vColuna}`;
 
-                // Montagem do endereço dinâmico limpo
-                const vEndereco = `${vRua} | ${vRack} | Linha: ${vLinha} | Coluna: ${vColuna}`;
-
-                return {
-                    sku: vSku,
-                    nome: vNome,
-                    endereco: vEndereco
-                };
-            }).filter(p => p.nome !== '' && p.sku.toLowerCase() !== 'sku');
+                    if (vNome && vSku.toLowerCase() !== 'sku') {
+                        produtos.push({ sku: vSku, nome: vNome, endereco: vEndereco });
+                    }
+                }
+            }
 
             localStorage.setItem('produtos_estoque', JSON.stringify(produtos));
             
@@ -126,7 +105,7 @@
 
             renderizarProdutos(produtos);
         } catch (erro) {
-            alert("Erro de conexão.\n\nPor favor, garanta que no botão azul 'Compartilhar' da sua planilha você mudou para 'Qualquer pessoa com o link'.");
+            alert("Erro ao sincronizar. Verifique a internet.");
             document.getElementById('resultsCount').innerText = "Erro na sincronização.";
             console.error(erro);
         } finally {
