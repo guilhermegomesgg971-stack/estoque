@@ -7,7 +7,7 @@
     <style>
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { margin: 0; padding: 0; background-color: #f1f3f5; color: #212529; }
-        header { background-color: #0f9d58; color: white; padding: 15px; text-align: center; font-size: 1.2rem; font-weight: bold; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; }
+        header { background-color: #0f9d58; color: white; padding: 15px; text-align: center; font-size: 1.2rem; font-weight: bold; position: sticky; top: 0; z-index: 100; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .container { padding: 15px; max-width: 600px; margin: 0 auto; }
         .search-input { width: 100%; padding: 15px; font-size: 1rem; border: 2px solid #ced4da; border-radius: 8px; outline: none; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
         .search-input:focus { border-color: #0f9d58; }
@@ -39,13 +39,12 @@
 </div>
 
 <script>
-    // Configurações da sua planilha
-    const SPREADSHEET_ID = '1Tz-ECCCJgoJwkKA3QriO1_KSLLf_pPaHHiqQGYwhwcI/edit?hl=pt-br&gid=0#gid=0';
+    // Cole aqui o ID da sua planilha (sem espaços dentro das aspas, com ponto e vírgula no final)
+    const SPREADSHEET_ID = '1Tz-ECCCJgoJwkKA3QriO1_KSLLf_pPaHHiqQGYwhwcI/edit?hl=pt-br&gid=0#gid=0'; 
     const SHEET_NAME = 'Página1'; 
 
     let produtos = [];
 
-    // Carrega os dados salvos na memória do celular imediatamente
     function carregarDadosLocais() {
         const dadosSalvos = localStorage.getItem('produtos_estoque');
         const ultimaAtualizacao = localStorage.getItem('ultima_atualizacao');
@@ -55,36 +54,44 @@
             document.getElementById('dataStatus').innerText = "Dados locais: " + ultimaAtualizacao;
             renderizarProdutos(produtos);
         } else {
-            // Se for a primeira vez e não tiver nada salvo, busca da internet
             atualizarPlanilha();
         }
     }
 
-    // Busca os dados novos do Google e salva na memória
     async function atualizarPlanilha() {
         const btn = document.querySelector('.sync-btn');
         btn.innerText = "⏳...";
         document.getElementById('resultsCount').innerText = "Buscando dados novos do Google...";
         
+        // Nova URL de API simplificada que evita falhas de leitura
         const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`;
         
         try {
             const resposta = await fetch(url);
+            if (!resposta.ok) throw new Error('Falha na rede');
+            
             const texto = await resposta.text();
             const jsonPuro = JSON.parse(texto.substring(47).slice(0, -2));
             const linhas = jsonPuro.table.rows;
             
-            produtos = linhas.map(linha => ({
-                sku: linha.c[0] ? String(linha.c[0].v) : '',
-                nome: linha.c[1] ? String(linha.c[1].v) : '',
-                endereco: linha.c[2] ? String(linha.c[2].v) : ''
-            }));
+            // Processamento ultra seguro das colunas (independente de como o Google estruturar o objeto)
+            produtos = linhas.map(linha => {
+                const celulas = linha.c || [];
+                return {
+                    sku: celulas[0] && celulas[0].v !== null ? String(celulas[0].v) : '',
+                    nome: celulas[1] && celulas[1].v !== null ? String(celulas[1].v) : '',
+                    endereco: celulas[2] && celulas[2].v !== null ? String(celulas[2].v) : ''
+                };
+            });
 
-            if(produtos.length > 0 && produtos[0].sku.toLowerCase() === 'sku') {
+            // Se capturar os cabeçalhos literais na primeira linha, remove da lista
+            if (produtos.length > 0 && produtos[0].sku.toLowerCase() === 'sku') {
                 produtos.shift();
             }
 
-            // Salva na memória do navegador do celular
+            // Filtra linhas totalmente vazias cadastradas por engano na planilha
+            produtos = produtos.filter(p => p.nome.trim() !== '' || p.sku.trim() !== '');
+
             localStorage.setItem('produtos_estoque', JSON.stringify(produtos));
             
             const agora = new Date().toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'});
@@ -93,7 +100,8 @@
 
             renderizarProdutos(produtos);
         } catch (erro) {
-            alert("Erro ao sincronizar com o Google Sheets. Verifique a internet.");
+            alert("Erro ao conectar com o Google Sheets.\n\nVerifique:\n1. Se o ID da planilha está certo no código.\n2. Se a planilha está como 'Qualquer pessoa com o link'.\n3. Se você clicou em 'Publicar na Web'.");
+            document.getElementById('resultsCount').innerText = "Erro na sincronização.";
             console.error(erro);
         } finally {
             btn.innerText = "🔄 Atualizar";
@@ -134,7 +142,6 @@
         renderizarProdutos(filtrados);
     }
 
-    // Inicia lendo a memória do celular (instantâneo)
     window.onload = carregarDadosLocais;
 </script>
 </body>
