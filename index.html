@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Buscador de Estoque - Localizador</title>
+    <title>Buscador de Estoque - Final</title>
     <style>
         * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { margin: 0; padding: 0; background-color: #f1f3f5; color: #212529; }
@@ -57,33 +57,61 @@
         }
     }
 
+    // Função auxiliar para quebrar as linhas do CSV respeitando aspas
+    function parseCSV(text) {
+        let lines = [];
+        let row = [""];
+        let inQuotes = false;
+
+        for (let i = 0; i < text.length; i++) {
+            let c = text[i];
+            let next = text[i+1];
+
+            if (c === '"') {
+                if (inQuotes && next === '"') { row[row.length - 1] += '"'; i++; }
+                else { inQuotes = !inQuotes; }
+            } else if (c === ',' && !inQuotes) {
+                row.push("");
+            } else if ((c === '\r' || c === '\n') && !inQuotes) {
+                if (c === '\r' && next === '\n') { i++; }
+                lines.push(row);
+                row = [""];
+            } else {
+                row[row.length - 1] += c;
+            }
+        }
+        if (row.length > 1 || row[0] !== "") { lines.push(row); }
+        return lines;
+    }
+
     async function atualizarPlanilha() {
         const btn = document.querySelector('.sync-btn');
         btn.innerText = "⏳...";
         document.getElementById('resultsCount').innerText = "Buscando dados...";
         
-        const url = `https://google.com{SPREADSHEET_ID}/gviz/tq?tqx=out:json`;
+        // Chamada via formato CSV que é universal e imune a erros de estrutura de tabelas do Google
+        const url = `https://google.com{SPREADSHEET_ID}/pub?output=csv`;
         
         try {
             const resposta = await fetch(url);
-            if (!resposta.ok) throw new Error('Falha na rede');
+            if (!resposta.ok) throw new Error('Falha de rede');
             
             const texto = await resposta.text();
-            const jsonPuro = JSON.parse(texto.substring(47).slice(0, -2));
-            const linhas = jsonPuro.table.rows;
+            const linhas = parseCSV(texto);
             
-            // Mapeamento exato baseado nas suas 5 colunas sequenciais
-            produtos = linhas.map(linha => {
-                const celulas = linha.c || [];
-                
-                // Captura os dados limpando valores nulos
-                const vSku = celulas[0] && celulas[0].v !== null ? String(celulas[0].v) : '';
-                const vNome = celulas[1] && celulas[1].v !== null ? String(celulas[1].v) : '';
-                const vRack = celulas[2] && celulas[2].v !== null ? String(celulas[2].v) : '-';
-                const vLinha = celulas[3] && celulas[3].v !== null ? String(celulas[3].v) : '-';
-                const vColuna = celulas[4] && celulas[4].v !== null ? String(celulas[4].v) : '-';
+            if (linhas.length <= 1) {
+                throw new Error('Planilha vazia');
+            }
 
-                // Junta rack, linha e coluna em uma única informação visual organizada
+            // Mapeia os dados assumindo a ordem das suas 5 colunas (sku, nome, rack, linha, coluna)
+            produtos = linhas.slice(1).map(col => {
+                const vSku = col[0] ? col[0].trim() : '';
+                const vNome = col[1] ? col[1].trim() : '';
+                const vRack = col[2] ? col[2].trim() : '-';
+                const vLinha = col[3] ? col[3].trim() : '-';
+                const vColuna = col[4] ? col[4].trim() : '-';
+
+                // Formatação unificada do endereço
                 const vEndereco = `Rack: ${vRack} | Linha: ${vLinha} | Coluna: ${vColuna}`;
 
                 return {
@@ -91,14 +119,7 @@
                     nome: vNome,
                     endereco: vEndereco
                 };
-            });
-
-            // Filtra e remove a linha de cabeçalhos caso ela venha misturada
-            produtos = produtos.filter(p => {
-                const skuLimpo = p.sku.toLowerCase().trim();
-                const nomeLimpo = p.nome.toLowerCase().trim();
-                return skuLimpo !== 'sku' && nomeLimpo !== 'nome' && nomeLimpo !== '';
-            });
+            }).filter(p => p.nome !== ''); // Ignora linhas totalmente em branco
 
             localStorage.setItem('produtos_estoque', JSON.stringify(produtos));
             
@@ -108,7 +129,7 @@
 
             renderizarProdutos(produtos);
         } catch (erro) {
-            alert("Erro ao decodificar a planilha. Verifique as configurações de compartilhamento.");
+            alert("Erro ao ler a planilha. Verifique se realizou o passo de 'Publicar na Web' como CSV ou se o ID está correto.");
             document.getElementById('resultsCount').innerText = "Erro na sincronização.";
             console.error(erro);
         } finally {
